@@ -408,6 +408,7 @@ typedef List<HeapObject*> DebugObjectCache;
     deserialize_internal_fields_callback, nullptr)                            \
   V(int, pending_microtask_count, 0)                                          \
   V(int, debug_microtask_count, 0)                                            \
+  V(Object*, js_promise_hook, nullptr)                                         \
   V(HStatistics*, hstatistics, nullptr)                                       \
   V(CompilationStatistics*, turbo_statistics, nullptr)                        \
   V(HTracer*, htracer, nullptr)                                               \
@@ -1126,9 +1127,10 @@ class Isolate {
 #endif
 
   Address promise_hook_address() {
-    return reinterpret_cast<Address>(&promise_hook_);
+    return reinterpret_cast<Address>(&js_promise_hook_);
   }
   void SetPromiseHook(PromiseHook hook);
+  void SetJSPromiseHook(Handle<Object> hook);
   void RunPromiseHook(PromiseHookType type, Handle<JSPromise> promise,
                       Handle<Object> parent);
 

@@ -3167,13 +3167,31 @@ void Isolate::FireCallCompletedCallback() {
   }
 }
 
+void Isolate::SetJSPromiseHook(Handle<Object> hook) {
+  if (hook->IsUndefined(this)) {
+    set_js_promise_hook(nullptr);
+    return;
+  }
+
+  set_js_promise_hook(*hook);
+}
+
 void Isolate::SetPromiseHook(PromiseHook hook) { promise_hook_ = hook; }
 
 void Isolate::RunPromiseHook(PromiseHookType type, Handle<JSPromise> promise,
                              Handle<Object> parent) {
-  if (promise_hook_ == nullptr) return;
-  promise_hook_(type, v8::Utils::PromiseToLocal(promise),
-                v8::Utils::ToLocal(parent));
+  if (promise_hook_ != nullptr) {
+    promise_hook_(type, v8::Utils::PromiseToLocal(promise),
+                  v8::Utils::ToLocal(parent));
+  }
+
+  if (js_promise_hook() != nullptr) {
+    Handle<Object> js_hook = handle(js_promise_hook(), this);
+    Handle<Smi> type_smi = handle(Smi::FromInt(static_cast<int>(type)), this);
+    Handle<Object> argv[] = {type_smi, promise, parent };
+    MaybeHandle<Object> result = Execution::Call(
+        this, js_hook, factory()->undefined_value(), arraysize(argv), argv);
+  }
 }
 
 void Isolate::SetPromiseRejectCallback(PromiseRejectCallback callback) {

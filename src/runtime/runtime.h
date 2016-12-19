@@ -320,6 +320,7 @@ namespace internal {
   F(PromiseRevokeReject, 1, 1)                      \
   F(PromiseResult, 1, 1)                            \
   F(PromiseStatus, 1, 1)                            \
+  F(SetPromiseHook, 1, 1)                           \
   F(PromoteScheduledException, 0, 1)                \
   F(ReThrow, 1, 1)                                  \
   F(RunMicrotasks, 0, 1)                            \

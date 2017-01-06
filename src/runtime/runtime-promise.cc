@@ -324,5 +324,13 @@ RUNTIME_FUNCTION(Runtime_PromiseHookAfter) {
   return isolate->heap()->undefined_value();
 }
 
+RUNTIME_FUNCTION(Runtime_SetPromiseHook) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(1, args.length());
+  CONVERT_ARG_HANDLE_CHECKED(Object, hook, 0);
+  isolate->SetJSPromiseHook(hook);
+  return isolate->heap()->undefined_value();
+}
+
 }  // namespace internal
 }  // namespace v8

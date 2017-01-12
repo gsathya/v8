@@ -232,11 +232,10 @@ typedef Managed<WasmModule> WasmModuleWrapper;
 struct WasmInstance {
   const WasmModule* module;  // static representation of the module.
   // -- Heap allocated --------------------------------------------------------
-  Handle<JSObject> js_object;            // JavaScript module object.
   Handle<Context> context;               // JavaScript native context.
-  Handle<JSArrayBuffer> mem_buffer;      // Handle to array buffer of memory.
-  Handle<JSArrayBuffer> globals_buffer;  // Handle to array buffer of globals.
   std::vector<Handle<FixedArray>> function_tables;  // indirect function tables.
+  std::vector<Handle<FixedArray>>
+      signature_tables;                    // indirect signature tables.
   std::vector<Handle<Code>> function_code;  // code objects for each function.
   // -- raw memory ------------------------------------------------------------
   byte* mem_start = nullptr;  // start of linear memory.
@@ -247,6 +246,7 @@ struct WasmInstance {
   explicit WasmInstance(const WasmModule* m)
       : module(m),
         function_tables(m->function_tables.size()),
+        signature_tables(m->function_tables.size()),
         function_code(m->functions.size()) {}
 };
 
@@ -395,6 +395,14 @@ V8_EXPORT_PRIVATE MaybeHandle<WasmModuleObject> CreateModuleObjectFromBytes(
     Isolate* isolate, const byte* start, const byte* end, ErrorThrower* thrower,
     ModuleOrigin origin, Handle<Script> asm_js_script,
     Vector<const byte> asm_offset_table);
+
+V8_EXPORT_PRIVATE Handle<JSArray> GetImports(Isolate* isolate,
+                                             Handle<WasmModuleObject> module);
+V8_EXPORT_PRIVATE Handle<JSArray> GetExports(Isolate* isolate,
+                                             Handle<WasmModuleObject> module);
+
+V8_EXPORT_PRIVATE Handle<JSArray> GetExports(Isolate* isolate,
+                                             Handle<WasmModuleObject> module);
 
 V8_EXPORT_PRIVATE bool ValidateModuleBytes(Isolate* isolate, const byte* start,
                                            const byte* end,

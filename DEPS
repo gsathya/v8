@@ -8,15 +8,15 @@ vars = {
 
 deps = {
   "v8/build":
-    Var("chromium_url") + "/chromium/src/build.git" + "@" + "87eca92f3ec5fd201f152d67d6d4888ef72ebfb3",
+    Var("chromium_url") + "/chromium/src/build.git" + "@" + "9c22ce79471839392b118a53ba47d20d3ea2fe29",
   "v8/tools/gyp":
     Var("chromium_url") + "/external/gyp.git" + "@" + "e7079f0e0e14108ab0dba58728ff219637458563",
   "v8/third_party/icu":
     Var("chromium_url") + "/chromium/deps/icu.git" + "@" + "9cd2828740572ba6f694b9365236a8356fd06147",
   "v8/third_party/instrumented_libraries":
-    Var("chromium_url") + "/chromium/src/third_party/instrumented_libraries.git" + "@" + "45f5814b1543e41ea0be54c771e3840ea52cca4a",
+    Var("chromium_url") + "/chromium/src/third_party/instrumented_libraries.git" + "@" + "5b6f777da671be977f56f0e8fc3469a3ccbb4474",
   "v8/buildtools":
-    Var("chromium_url") + "/chromium/buildtools.git" + "@" + "0ef801087682b271e9ace93cfa93e9d3dea98079",
+    Var("chromium_url") + "/chromium/buildtools.git" + "@" + "7e08d331f188f4e3e1c624e7187dfac58c053c7c",
   "v8/base/trace_event/common":
     Var("chromium_url") + "/chromium/src/base/trace_event/common.git" + "@" + "06294c8a4a6f744ef284cd63cfe54dbf61eea290",
   "v8/third_party/jinja2":
@@ -39,7 +39,7 @@ deps = {
   "v8/test/test262/harness":
     Var("chromium_url") + "/external/github.com/test262-utils/test262-harness-py.git" + "@" + "0f2acdd882c84cff43b9d60df7574a1901e2cdcd",
   "v8/tools/clang":
-    Var("chromium_url") + "/chromium/src/tools/clang.git" + "@" + "5b3c04d1f8eaa61dcc763680e7ed3a4555a0dba4",
+    Var("chromium_url") + "/chromium/src/tools/clang.git" + "@" + "c30c6ff0e8336a05c5427ce54ed18a3d65c3d260",
 }
 
 deps_os = {
@@ -47,7 +47,7 @@ deps_os = {
     "v8/third_party/android_tools":
       Var("chromium_url") + "/android_tools.git" + "@" + "b43a6a289a7588b1769814f04dd6c7d7176974cc",
     "v8/third_party/catapult":
-      Var('chromium_url') + "/external/github.com/catapult-project/catapult.git" + "@" + "9e6944a8f3106212e60d36add9a357964bf55373",
+      Var('chromium_url') + "/external/github.com/catapult-project/catapult.git" + "@" + "ed0540fbc6ef0009d7c88ce7dc2bd916455ef3a3",
   },
   "win": {
     "v8/third_party/cygwin":

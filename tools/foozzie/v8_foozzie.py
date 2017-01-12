@@ -79,6 +79,7 @@ FAILURE_TEMPLATE = FAILURE_HEADER_TEMPLATE + """#
 ### End of configuration %(second_config_label)s
 """
 
+FUZZ_TEST_RE = re.compile(r'.*fuzz(-\d+\.js)')
 
 def parse_args():
   parser = argparse.ArgumentParser()
@@ -117,9 +118,11 @@ def parse_args():
           os.path.isfile(options.testcase)), (
       'Test case %s doesn\'t exist' % options.testcase)
 
+  # Deduce metadata file name from test case. This also removes
+  # the prefix the test case might get during minimization.
+  suffix = FUZZ_TEST_RE.match(os.path.basename(options.testcase)).group(1)
   options.meta_data_path = os.path.join(
-      os.path.dirname(options.testcase),
-      'meta' + os.path.basename(options.testcase)[len('fuzz'):])
+      os.path.dirname(options.testcase), 'meta' + suffix)
   assert os.path.exists(options.meta_data_path), (
       'Metadata %s doesn\'t exist' % options.meta_data_path)
 
@@ -143,6 +146,16 @@ def parse_args():
     assert options.first_d8 != options.second_d8
 
   return options
+
+
+def metadata_bailout(metadata, ignore_fun):
+  """Print failure state and return if ignore_fun matches metadata."""
+  bug = (ignore_fun(metadata) or '').strip()
+  if bug:
+    print FAILURE_HEADER_TEMPLATE % dict(
+        configs='', sources='', suppression=bug)
+    return True
+  return False
 
 
 def test_pattern_bailout(testcase, ignore_fun):
@@ -188,12 +201,15 @@ def main():
       options.second_arch, options.second_config,
   )
 
-  if test_pattern_bailout(options.testcase, suppress.ignore):
-    return RETURN_FAIL
-
   # Get metadata.
   with open(options.meta_data_path) as f:
     metadata = json.load(f)
+
+  if metadata_bailout(metadata, suppress.ignore_by_metadata):
+    return RETURN_FAIL
+
+  if test_pattern_bailout(options.testcase, suppress.ignore_by_content):
+    return RETURN_FAIL
 
   common_flags = FLAGS + ['--random-seed', str(options.random_seed)]
   first_config_flags = common_flags + CONFIGS[options.first_config]

@@ -85,6 +85,7 @@ class TestingModule : public ModuleEnv {
                                               Vector<const byte>::empty()),
                                zone->allocator())
                          : nullptr) {
+    WasmJs::Install(isolate_);
     instance->module = &module_;
     instance->globals_start = global_data;
     module_.globals_size = kMaxGlobalsSize;
@@ -181,6 +182,10 @@ class TestingModule : public ModuleEnv {
     rng.NextBytes(raw, end - raw);
   }
 
+  void SetMaxMemPages(uint32_t max_mem_pages) {
+    module_.max_mem_pages = max_mem_pages;
+  }
+
   uint32_t AddFunction(FunctionSig* sig, Handle<Code> code, const char* name) {
     if (module->functions.size() == 0) {
       // TODO(titzer): Reserving space here to avoid the underlying WasmFunction
@@ -219,7 +224,6 @@ class TestingModule : public ModuleEnv {
     // Wrap the code so it can be called as a JS function.
     Handle<WasmInstanceObject> instance_obj(0, isolate_);
     Handle<Code> code = instance->function_code[index];
-    WasmJs::InstallWasmMapsIfNeeded(isolate_, isolate_->native_context());
     Handle<Code> ret_code =
         compiler::CompileJSToWasmWrapper(isolate_, &module_, code, index);
     Handle<JSFunction> ret = WasmExportedFunction::New(
@@ -247,7 +251,9 @@ class TestingModule : public ModuleEnv {
     }
 
     instance->function_tables.push_back(
-        isolate_->factory()->NewFixedArray(table_size * 2));
+        isolate_->factory()->NewFixedArray(table_size));
+    instance->signature_tables.push_back(
+        isolate_->factory()->NewFixedArray(table_size));
   }
 
   void PopulateIndirectFunctionTable() {
@@ -255,13 +261,13 @@ class TestingModule : public ModuleEnv {
     // Initialize the fixed arrays in instance->function_tables.
     for (uint32_t i = 0; i < instance->function_tables.size(); i++) {
       WasmIndirectFunctionTable& table = module_.function_tables[i];
-      Handle<FixedArray> array = instance->function_tables[i];
+      Handle<FixedArray> function_table = instance->function_tables[i];
+      Handle<FixedArray> signature_table = instance->signature_tables[i];
       int table_size = static_cast<int>(table.values.size());
       for (int j = 0; j < table_size; j++) {
         WasmFunction& function = module_.functions[table.values[j]];
-        array->set(j, Smi::FromInt(table.map.Find(function.sig)));
-        array->set(j + table_size,
-                   *instance->function_code[function.func_index]);
+        signature_table->set(j, Smi::FromInt(table.map.Find(function.sig)));
+        function_table->set(j, *instance->function_code[function.func_index]);
       }
     }
   }
@@ -720,8 +726,6 @@ class WasmRunner : public WasmRunnerBase {
     if (interpret()) return CallInterpreter(p...);
 
     // Use setjmp/longjmp to deal with traps in WebAssembly code.
-    // Make the return value volatile, to give defined semantics if accessed
-    // after setjmp.
     ReturnType return_value = static_cast<ReturnType>(0xdeadbeefdeadbeef);
     static int setjmp_ret;
     setjmp_ret = setjmp(WasmRunnerBase::jump_buffer);

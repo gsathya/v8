@@ -69,7 +69,7 @@ class WasmTableObject : public JSObject {
   static Handle<FixedArray> AddDispatchTable(
       Isolate* isolate, Handle<WasmTableObject> table,
       Handle<WasmInstanceObject> instance, int table_index,
-      Handle<FixedArray> dispatch_table);
+      Handle<FixedArray> function_table, Handle<FixedArray> signature_table);
 };
 
 // Representation of a WebAssembly.Memory JavaScript-level object.
@@ -237,8 +237,10 @@ class WasmCompiledModule : public FixedArray {
 
 #define CORE_WCM_PROPERTY_TABLE(MACRO)                \
   MACRO(WASM_OBJECT, WasmSharedModuleData, shared)    \
+  MACRO(OBJECT, Context, native_context)              \
   MACRO(OBJECT, FixedArray, code_table)               \
   MACRO(OBJECT, FixedArray, function_tables)          \
+  MACRO(OBJECT, FixedArray, signature_tables)         \
   MACRO(OBJECT, FixedArray, empty_function_tables)    \
   MACRO(OBJECT, JSArrayBuffer, memory)                \
   MACRO(SMALL_NUMBER, uint32_t, min_mem_pages)        \
@@ -381,6 +383,9 @@ class WasmDebugInfo : public FixedArray {
 
   static bool IsDebugInfo(Object*);
   static WasmDebugInfo* cast(Object*);
+
+  static void RunInterpreter(Handle<WasmDebugInfo>, int func_index,
+                             uint8_t* arg_buffer);
 
   DECLARE_GETTER(wasm_instance, WasmInstanceObject);
 };

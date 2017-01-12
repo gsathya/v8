@@ -9,6 +9,7 @@
 #include "src/arguments.h"
 #include "src/ast/prettyprinter.h"
 #include "src/bootstrapper.h"
+#include "src/builtins/builtins.h"
 #include "src/conversions.h"
 #include "src/debug/debug.h"
 #include "src/frames-inl.h"
@@ -331,7 +332,7 @@ bool ComputeLocation(Isolate* isolate, MessageLocation* target) {
     // information to get canonical location information.
     List<FrameSummary> frames(FLAG_max_inlining_levels + 1);
     it.frame()->Summarize(&frames);
-    FrameSummary& summary = frames.last();
+    auto& summary = frames.last().AsJavaScript();
     Handle<JSFunction> function = summary.function();
     Handle<Object> script(function->shared()->script(), isolate);
     int pos = summary.abstract_code()->SourcePosition(summary.code_offset());
@@ -350,12 +351,8 @@ Handle<String> RenderCallSite(Isolate* isolate, Handle<Object> object) {
   MessageLocation location;
   if (ComputeLocation(isolate, &location)) {
     Zone zone(isolate->allocator(), ZONE_NAME);
-    std::unique_ptr<ParseInfo> info;
-    if (location.function()->shared()->is_function()) {
-      info.reset(new ParseInfo(&zone, handle(location.function()->shared())));
-    } else {
-      info.reset(new ParseInfo(&zone, location.script()));
-    }
+    std::unique_ptr<ParseInfo> info(
+        new ParseInfo(&zone, handle(location.function()->shared())));
     if (parsing::ParseAny(info.get())) {
       CallPrinter printer(isolate,
                           location.function()->shared()->IsUserJavaScript());
@@ -490,6 +487,15 @@ RUNTIME_FUNCTION(Runtime_Typeof) {
   DCHECK_EQ(1, args.length());
   CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
   return *Object::TypeOf(isolate, object);
+}
+
+RUNTIME_FUNCTION(Runtime_AllowDynamicFunction) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(1, args.length());
+  CONVERT_ARG_HANDLE_CHECKED(JSFunction, target, 0);
+  Handle<JSObject> global_proxy(target->global_proxy(), isolate);
+  return *isolate->factory()->ToBoolean(
+      Builtins::AllowDynamicFunction(isolate, target, global_proxy));
 }
 
 }  // namespace internal

@@ -492,11 +492,10 @@ class BytecodeGenerator::TestResultScope final : public ExpressionResultScope {
 // Used to build a list of global declaration initial value pairs.
 class BytecodeGenerator::GlobalDeclarationsBuilder final : public ZoneObject {
  public:
-  GlobalDeclarationsBuilder(Zone* zone, LazyCompilationMode mode)
+  explicit GlobalDeclarationsBuilder(Zone* zone)
       : declarations_(0, zone),
         constant_pool_entry_(0),
-        has_constant_pool_entry_(false),
-        compilation_mode_(mode) {}
+        has_constant_pool_entry_(false) {}
 
   void AddFunctionDeclaration(Handle<String> name, FeedbackVectorSlot slot,
                               FunctionLiteral* func) {
@@ -520,8 +519,8 @@ class BytecodeGenerator::GlobalDeclarationsBuilder final : public ZoneObject {
       if (func == nullptr) {
         initial_value = info->isolate()->factory()->undefined_value();
       } else {
-        initial_value = Compiler::GetSharedFunctionInfo(
-            func, info->script(), info, compilation_mode_);
+        initial_value =
+            Compiler::GetSharedFunctionInfo(func, info->script(), info);
       }
 
       // Return a null handle if any initial values can't be created. Caller
@@ -563,11 +562,9 @@ class BytecodeGenerator::GlobalDeclarationsBuilder final : public ZoneObject {
   ZoneVector<Declaration> declarations_;
   size_t constant_pool_entry_;
   bool has_constant_pool_entry_;
-  LazyCompilationMode compilation_mode_;
 };
 
-BytecodeGenerator::BytecodeGenerator(CompilationInfo* info,
-                                     LazyCompilationMode mode)
+BytecodeGenerator::BytecodeGenerator(CompilationInfo* info)
     : zone_(info->zone()),
       builder_(new (zone()) BytecodeArrayBuilder(
           info->isolate(), info->zone(), info->num_parameters_including_this(),
@@ -576,9 +573,7 @@ BytecodeGenerator::BytecodeGenerator(CompilationInfo* info,
           info->SourcePositionRecordingMode())),
       info_(info),
       scope_(info->scope()),
-      compilation_mode_(mode),
-      globals_builder_(new (zone())
-                           GlobalDeclarationsBuilder(info->zone(), mode)),
+      globals_builder_(new (zone()) GlobalDeclarationsBuilder(info->zone())),
       global_declarations_(0, info->zone()),
       function_literals_(0, info->zone()),
       native_function_literals_(0, info->zone()),
@@ -617,8 +612,8 @@ void BytecodeGenerator::AllocateDeferredConstants() {
   // Find or build shared function infos.
   for (std::pair<FunctionLiteral*, size_t> literal : function_literals_) {
     FunctionLiteral* expr = literal.first;
-    Handle<SharedFunctionInfo> shared_info = Compiler::GetSharedFunctionInfo(
-        expr, info()->script(), info(), compilation_mode_);
+    Handle<SharedFunctionInfo> shared_info =
+        Compiler::GetSharedFunctionInfo(expr, info()->script(), info());
     if (shared_info.is_null()) return SetStackOverflow();
     builder()->InsertConstantPoolEntryAt(literal.second, shared_info);
   }
@@ -955,8 +950,7 @@ void BytecodeGenerator::VisitDeclarations(Declaration::List* declarations) {
 
   // Push and reset globals builder.
   global_declarations_.push_back(globals_builder());
-  globals_builder_ =
-      new (zone()) GlobalDeclarationsBuilder(zone(), compilation_mode_);
+  globals_builder_ = new (zone()) GlobalDeclarationsBuilder(zone());
 }
 
 void BytecodeGenerator::VisitStatements(ZoneList<Statement*>* statements) {
@@ -1406,7 +1400,8 @@ void BytecodeGenerator::VisitFunctionLiteral(FunctionLiteral* expr) {
   uint8_t flags = CreateClosureFlags::Encode(expr->pretenure(),
                                              scope()->is_function_scope());
   size_t entry = builder()->AllocateConstantPoolEntry();
-  builder()->CreateClosure(entry, flags);
+  int slot_index = feedback_index(expr->LiteralFeedbackSlot());
+  builder()->CreateClosure(entry, slot_index, flags);
   function_literals_.push_back(std::make_pair(expr, entry));
 }
 
@@ -1548,7 +1543,8 @@ void BytecodeGenerator::BuildClassLiteralNameProperty(ClassLiteral* expr,
 void BytecodeGenerator::VisitNativeFunctionLiteral(
     NativeFunctionLiteral* expr) {
   size_t entry = builder()->AllocateConstantPoolEntry();
-  builder()->CreateClosure(entry, NOT_TENURED);
+  int slot_index = feedback_index(expr->LiteralFeedbackSlot());
+  builder()->CreateClosure(entry, slot_index, NOT_TENURED);
   native_function_literals_.push_back(std::make_pair(expr, entry));
 }
 
@@ -1983,25 +1979,19 @@ void BytecodeGenerator::BuildThrowIfHole(Handle<String> name) {
   builder()->Bind(&no_reference_error);
 }
 
-void BytecodeGenerator::BuildThrowIfNotHole(Handle<String> name) {
-  // TODO(interpreter): Can the parser reduce the number of checks
-  // performed? Or should there be a ThrowIfNotHole bytecode.
-  BytecodeLabel no_reference_error, reference_error;
-  builder()
-      ->JumpIfNotHole(&reference_error)
-      .Jump(&no_reference_error)
-      .Bind(&reference_error);
-  BuildThrowReferenceError(name);
-  builder()->Bind(&no_reference_error);
-}
-
 void BytecodeGenerator::BuildHoleCheckForVariableAssignment(Variable* variable,
                                                             Token::Value op) {
   if (variable->is_this() && variable->mode() == CONST && op == Token::INIT) {
     // Perform an initialization check for 'this'. 'this' variable is the
     // only variable able to trigger bind operations outside the TDZ
     // via 'super' calls.
-    BuildThrowIfNotHole(variable->name());
+    BytecodeLabel no_reference_error, reference_error;
+    builder()
+        ->JumpIfNotHole(&reference_error)
+        .Jump(&no_reference_error)
+        .Bind(&reference_error)
+        .CallRuntime(Runtime::kThrowSuperAlreadyCalledError)
+        .Bind(&no_reference_error);
   } else {
     // Perform an initialization check for let/const declared variables.
     // E.g. let x = (x = 20); is not allowed.

@@ -293,44 +293,15 @@ RUNTIME_FUNCTION(Runtime_IsInitializedIntlObjectOfType) {
 RUNTIME_FUNCTION(Runtime_MarkAsInitializedIntlObjectOfType) {
   HandleScope scope(isolate);
 
-  DCHECK_EQ(3, args.length());
+  DCHECK_EQ(2, args.length());
 
   CONVERT_ARG_HANDLE_CHECKED(JSObject, input, 0);
   CONVERT_ARG_HANDLE_CHECKED(String, type, 1);
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, impl, 2);
 
   Handle<Symbol> marker = isolate->factory()->intl_initialized_marker_symbol();
   JSObject::SetProperty(input, marker, type, STRICT).Assert();
 
-  marker = isolate->factory()->intl_impl_object_symbol();
-  JSObject::SetProperty(input, marker, impl, STRICT).Assert();
-
   return isolate->heap()->undefined_value();
-}
-
-
-RUNTIME_FUNCTION(Runtime_GetImplFromInitializedIntlObject) {
-  HandleScope scope(isolate);
-
-  DCHECK_EQ(1, args.length());
-
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, input, 0);
-
-  if (!input->IsJSObject()) {
-    THROW_NEW_ERROR_RETURN_FAILURE(
-        isolate, NewTypeError(MessageTemplate::kNotIntlObject, input));
-  }
-
-  Handle<JSObject> obj = Handle<JSObject>::cast(input);
-
-  Handle<Symbol> marker = isolate->factory()->intl_impl_object_symbol();
-
-  Handle<Object> impl = JSReceiver::GetDataProperty(obj, marker);
-  if (!impl->IsJSObject()) {
-    THROW_NEW_ERROR_RETURN_FAILURE(
-        isolate, NewTypeError(MessageTemplate::kNotIntlObject, obj));
-  }
-  return *impl;
 }
 
 
@@ -343,13 +314,12 @@ RUNTIME_FUNCTION(Runtime_CreateDateTimeFormat) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, options, 1);
   CONVERT_ARG_HANDLE_CHECKED(JSObject, resolved, 2);
 
-  Handle<ObjectTemplateInfo> date_format_template = I18N::GetTemplate(isolate);
+  Handle<JSFunction> constructor(
+      isolate->native_context()->intl_date_time_format_function());
 
-  // Create an empty object wrapper.
   Handle<JSObject> local_object;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, local_object,
-      ApiNatives::InstantiateObject(date_format_template));
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, local_object,
+                                     JSObject::New(constructor, constructor));
 
   // Set date time formatter as internal field of the resulting JS object.
   icu::SimpleDateFormat* date_format =
@@ -358,11 +328,6 @@ RUNTIME_FUNCTION(Runtime_CreateDateTimeFormat) {
   if (!date_format) return isolate->ThrowIllegalOperation();
 
   local_object->SetInternalField(0, reinterpret_cast<Smi*>(date_format));
-
-  Factory* factory = isolate->factory();
-  Handle<String> key = factory->NewStringFromStaticChars("dateFormat");
-  Handle<String> value = factory->NewStringFromStaticChars("valid");
-  JSObject::AddProperty(local_object, key, value, NONE);
 
   // Make object handle weak so we can delete the data format once GC kicks in.
   Handle<Object> wrapper = isolate->global_handles()->Create(*local_object);
@@ -386,7 +351,7 @@ RUNTIME_FUNCTION(Runtime_InternalDateFormat) {
 
   icu::SimpleDateFormat* date_format =
       DateFormat::UnpackDateFormat(isolate, date_format_holder);
-  if (!date_format) return isolate->ThrowIllegalOperation();
+  CHECK_NOT_NULL(date_format);
 
   icu::UnicodeString result;
   date_format->format(value->Number(), result);
@@ -487,7 +452,7 @@ RUNTIME_FUNCTION(Runtime_InternalDateFormatToParts) {
 
   icu::SimpleDateFormat* date_format =
       DateFormat::UnpackDateFormat(isolate, date_format_holder);
-  if (!date_format) return isolate->ThrowIllegalOperation();
+  CHECK_NOT_NULL(date_format);
 
   icu::UnicodeString formatted;
   icu::FieldPositionIterator fp_iter;
@@ -539,14 +504,12 @@ RUNTIME_FUNCTION(Runtime_CreateNumberFormat) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, options, 1);
   CONVERT_ARG_HANDLE_CHECKED(JSObject, resolved, 2);
 
-  Handle<ObjectTemplateInfo> number_format_template =
-      I18N::GetTemplate(isolate);
+  Handle<JSFunction> constructor(
+      isolate->native_context()->intl_number_format_function());
 
-  // Create an empty object wrapper.
   Handle<JSObject> local_object;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, local_object,
-      ApiNatives::InstantiateObject(number_format_template));
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, local_object,
+                                     JSObject::New(constructor, constructor));
 
   // Set number formatter as internal field of the resulting JS object.
   icu::DecimalFormat* number_format =
@@ -555,11 +518,6 @@ RUNTIME_FUNCTION(Runtime_CreateNumberFormat) {
   if (!number_format) return isolate->ThrowIllegalOperation();
 
   local_object->SetInternalField(0, reinterpret_cast<Smi*>(number_format));
-
-  Factory* factory = isolate->factory();
-  Handle<String> key = factory->NewStringFromStaticChars("numberFormat");
-  Handle<String> value = factory->NewStringFromStaticChars("valid");
-  JSObject::AddProperty(local_object, key, value, NONE);
 
   Handle<Object> wrapper = isolate->global_handles()->Create(*local_object);
   GlobalHandles::MakeWeak(wrapper.location(), wrapper.location(),
@@ -582,7 +540,7 @@ RUNTIME_FUNCTION(Runtime_InternalNumberFormat) {
 
   icu::DecimalFormat* number_format =
       NumberFormat::UnpackNumberFormat(isolate, number_format_holder);
-  if (!number_format) return isolate->ThrowIllegalOperation();
+  CHECK_NOT_NULL(number_format);
 
   icu::UnicodeString result;
   number_format->format(value->Number(), result);
@@ -603,12 +561,12 @@ RUNTIME_FUNCTION(Runtime_CreateCollator) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, options, 1);
   CONVERT_ARG_HANDLE_CHECKED(JSObject, resolved, 2);
 
-  Handle<ObjectTemplateInfo> collator_template = I18N::GetTemplate(isolate);
+  Handle<JSFunction> constructor(
+      isolate->native_context()->intl_collator_function());
 
-  // Create an empty object wrapper.
   Handle<JSObject> local_object;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, local_object, ApiNatives::InstantiateObject(collator_template));
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, local_object,
+                                     JSObject::New(constructor, constructor));
 
   // Set collator as internal field of the resulting JS object.
   icu::Collator* collator =
@@ -617,11 +575,6 @@ RUNTIME_FUNCTION(Runtime_CreateCollator) {
   if (!collator) return isolate->ThrowIllegalOperation();
 
   local_object->SetInternalField(0, reinterpret_cast<Smi*>(collator));
-
-  Factory* factory = isolate->factory();
-  Handle<String> key = factory->NewStringFromStaticChars("collator");
-  Handle<String> value = factory->NewStringFromStaticChars("valid");
-  JSObject::AddProperty(local_object, key, value, NONE);
 
   Handle<Object> wrapper = isolate->global_handles()->Create(*local_object);
   GlobalHandles::MakeWeak(wrapper.location(), wrapper.location(),
@@ -641,7 +594,7 @@ RUNTIME_FUNCTION(Runtime_InternalCompare) {
   CONVERT_ARG_HANDLE_CHECKED(String, string2, 2);
 
   icu::Collator* collator = Collator::UnpackCollator(isolate, collator_holder);
-  if (!collator) return isolate->ThrowIllegalOperation();
+  CHECK_NOT_NULL(collator);
 
   string1 = String::Flatten(string1);
   string2 = String::Flatten(string2);
@@ -734,17 +687,15 @@ RUNTIME_FUNCTION(Runtime_CreateBreakIterator) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, options, 1);
   CONVERT_ARG_HANDLE_CHECKED(JSObject, resolved, 2);
 
-  Handle<ObjectTemplateInfo> break_iterator_template =
-      I18N::GetTemplate2(isolate);
+  Handle<JSFunction> constructor(
+      isolate->native_context()->intl_v8_break_iterator_function());
 
-  // Create an empty object wrapper.
   Handle<JSObject> local_object;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, local_object,
-      ApiNatives::InstantiateObject(break_iterator_template));
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, local_object,
+                                     JSObject::New(constructor, constructor));
 
   // Set break iterator as internal field of the resulting JS object.
-  icu::BreakIterator* break_iterator = BreakIterator::InitializeBreakIterator(
+  icu::BreakIterator* break_iterator = V8BreakIterator::InitializeBreakIterator(
       isolate, locale, options, resolved);
 
   if (!break_iterator) return isolate->ThrowIllegalOperation();
@@ -753,16 +704,11 @@ RUNTIME_FUNCTION(Runtime_CreateBreakIterator) {
   // Make sure that the pointer to adopted text is NULL.
   local_object->SetInternalField(1, static_cast<Smi*>(nullptr));
 
-  Factory* factory = isolate->factory();
-  Handle<String> key = factory->NewStringFromStaticChars("breakIterator");
-  Handle<String> value = factory->NewStringFromStaticChars("valid");
-  JSObject::AddProperty(local_object, key, value, NONE);
-
   // Make object handle weak so we can delete the break iterator once GC kicks
   // in.
   Handle<Object> wrapper = isolate->global_handles()->Create(*local_object);
   GlobalHandles::MakeWeak(wrapper.location(), wrapper.location(),
-                          BreakIterator::DeleteBreakIterator,
+                          V8BreakIterator::DeleteBreakIterator,
                           WeakCallbackType::kInternalFields);
   return *local_object;
 }
@@ -777,8 +723,8 @@ RUNTIME_FUNCTION(Runtime_BreakIteratorAdoptText) {
   CONVERT_ARG_HANDLE_CHECKED(String, text, 1);
 
   icu::BreakIterator* break_iterator =
-      BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
-  if (!break_iterator) return isolate->ThrowIllegalOperation();
+      V8BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
+  CHECK_NOT_NULL(break_iterator);
 
   icu::UnicodeString* u_text = reinterpret_cast<icu::UnicodeString*>(
       break_iterator_holder->GetInternalField(1));
@@ -807,8 +753,8 @@ RUNTIME_FUNCTION(Runtime_BreakIteratorFirst) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, break_iterator_holder, 0);
 
   icu::BreakIterator* break_iterator =
-      BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
-  if (!break_iterator) return isolate->ThrowIllegalOperation();
+      V8BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
+  CHECK_NOT_NULL(break_iterator);
 
   return *isolate->factory()->NewNumberFromInt(break_iterator->first());
 }
@@ -822,8 +768,8 @@ RUNTIME_FUNCTION(Runtime_BreakIteratorNext) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, break_iterator_holder, 0);
 
   icu::BreakIterator* break_iterator =
-      BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
-  if (!break_iterator) return isolate->ThrowIllegalOperation();
+      V8BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
+  CHECK_NOT_NULL(break_iterator);
 
   return *isolate->factory()->NewNumberFromInt(break_iterator->next());
 }
@@ -837,8 +783,8 @@ RUNTIME_FUNCTION(Runtime_BreakIteratorCurrent) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, break_iterator_holder, 0);
 
   icu::BreakIterator* break_iterator =
-      BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
-  if (!break_iterator) return isolate->ThrowIllegalOperation();
+      V8BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
+  CHECK_NOT_NULL(break_iterator);
 
   return *isolate->factory()->NewNumberFromInt(break_iterator->current());
 }
@@ -852,8 +798,8 @@ RUNTIME_FUNCTION(Runtime_BreakIteratorBreakType) {
   CONVERT_ARG_HANDLE_CHECKED(JSObject, break_iterator_holder, 0);
 
   icu::BreakIterator* break_iterator =
-      BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
-  if (!break_iterator) return isolate->ThrowIllegalOperation();
+      V8BreakIterator::UnpackBreakIterator(isolate, break_iterator_holder);
+  CHECK_NOT_NULL(break_iterator);
 
   // TODO(cira): Remove cast once ICU fixes base BreakIterator class.
   icu::RuleBasedBreakIterator* rule_based_iterator =
@@ -1028,20 +974,13 @@ inline int FindFirstUpperOrNonAscii(Handle<String> s, int length) {
   return length;
 }
 
-}  // namespace
-
-RUNTIME_FUNCTION(Runtime_StringToLowerCaseI18N) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(args.length(), 1);
-  CONVERT_ARG_HANDLE_CHECKED(String, s, 0);
-
-  int length = s->length();
-  s = String::Flatten(s);
-
+MUST_USE_RESULT Object* ConvertToLower(Handle<String> s, Isolate* isolate) {
   if (!s->HasOnlyOneByteChars()) {
     // Use a slower implementation for strings with characters beyond U+00FF.
     return LocaleConvertCase(s, isolate, false, "");
   }
+
+  int length = s->length();
 
   // We depend here on the invariant that the length of a Latin1
   // string is invariant under ToLowerCase, and the result always
@@ -1098,14 +1037,8 @@ RUNTIME_FUNCTION(Runtime_StringToLowerCaseI18N) {
   return *result;
 }
 
-RUNTIME_FUNCTION(Runtime_StringToUpperCaseI18N) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(args.length(), 1);
-  CONVERT_ARG_HANDLE_CHECKED(String, s, 0);
-
+MUST_USE_RESULT Object* ConvertToUpper(Handle<String> s, Isolate* isolate) {
   int32_t length = s->length();
-  s = String::Flatten(s);
-
   if (s->HasOnlyOneByteChars()) {
     Handle<SeqOneByteString> result =
         isolate->factory()->NewRawOneByteString(length).ToHandleChecked();
@@ -1165,26 +1098,65 @@ RUNTIME_FUNCTION(Runtime_StringToUpperCaseI18N) {
   return LocaleConvertCase(s, isolate, true, "");
 }
 
+MUST_USE_RESULT Object* ConvertCase(Handle<String> s, bool is_upper,
+                                    Isolate* isolate) {
+  return is_upper ? ConvertToUpper(s, isolate) : ConvertToLower(s, isolate);
+}
+
+}  // namespace
+
+RUNTIME_FUNCTION(Runtime_StringToLowerCaseI18N) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(args.length(), 1);
+  CONVERT_ARG_HANDLE_CHECKED(String, s, 0);
+  s = String::Flatten(s);
+  return ConvertToLower(s, isolate);
+}
+
+RUNTIME_FUNCTION(Runtime_StringToUpperCaseI18N) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(args.length(), 1);
+  CONVERT_ARG_HANDLE_CHECKED(String, s, 0);
+  s = String::Flatten(s);
+  return ConvertToUpper(s, isolate);
+}
+
 RUNTIME_FUNCTION(Runtime_StringLocaleConvertCase) {
   HandleScope scope(isolate);
   DCHECK_EQ(args.length(), 3);
   CONVERT_ARG_HANDLE_CHECKED(String, s, 0);
   CONVERT_BOOLEAN_ARG_CHECKED(is_upper, 1);
-  CONVERT_ARG_HANDLE_CHECKED(SeqOneByteString, lang, 2);
+  CONVERT_ARG_HANDLE_CHECKED(String, lang_arg, 2);
 
-  // All the languages requiring special handling ("az", "el", "lt", "tr")
-  // have a 2-letter language code.
-  DCHECK(lang->length() == 2);
-  uint8_t lang_str[3];
-  memcpy(lang_str, lang->GetChars(), 2);
-  lang_str[2] = 0;
+  DCHECK(lang_arg->length() <= 3);
+  lang_arg = String::Flatten(lang_arg);
+
+  // All the languages requiring special-handling have two-letter codes.
+  if (V8_UNLIKELY(lang_arg->length() > 2))
+    return ConvertCase(s, is_upper, isolate);
+
+  char c1, c2;
+  {
+    DisallowHeapAllocation no_gc;
+    String::FlatContent lang = lang_arg->GetFlatContent();
+    c1 = lang.Get(0);
+    c2 = lang.Get(1);
+  }
   s = String::Flatten(s);
   // TODO(jshin): Consider adding a fast path for ASCII or Latin-1. The fastpath
   // in the root locale needs to be adjusted for az, lt and tr because even case
   // mapping of ASCII range characters are different in those locales.
-  // Greek (el) does not require any adjustment, though.
-  return LocaleConvertCase(s, isolate, is_upper,
-                           reinterpret_cast<const char*>(lang_str));
+  // Greek (el) does not require any adjustment.
+  if (V8_UNLIKELY(c1 == 't' && c2 == 'r'))
+    return LocaleConvertCase(s, isolate, is_upper, "tr");
+  if (V8_UNLIKELY(c1 == 'e' && c2 == 'l'))
+    return LocaleConvertCase(s, isolate, is_upper, "el");
+  if (V8_UNLIKELY(c1 == 'l' && c2 == 't'))
+    return LocaleConvertCase(s, isolate, is_upper, "lt");
+  if (V8_UNLIKELY(c1 == 'a' && c2 == 'z'))
+    return LocaleConvertCase(s, isolate, is_upper, "az");
+
+  return ConvertCase(s, is_upper, isolate);
 }
 
 RUNTIME_FUNCTION(Runtime_DateCacheVersion) {

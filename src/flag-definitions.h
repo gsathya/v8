@@ -222,7 +222,7 @@ DEFINE_IMPLICATION(es_staging, move_object_start)
 #endif
 
 // Features that are shipping (turned on by default, but internal flag remains).
-#define HARMONY_SHIPPING_BASE(V) V(harmony_async_await, "harmony async-await")
+#define HARMONY_SHIPPING_BASE(V)
 
 #ifdef V8_I18N_SUPPORT
 #define HARMONY_SHIPPING(V) \
@@ -283,6 +283,9 @@ DEFINE_IMPLICATION(track_field_types, track_heap_object_fields)
 DEFINE_BOOL(smi_binop, true, "support smi representation in binary operations")
 DEFINE_BOOL(mark_shared_functions_for_tier_up, false,
             "mark shared functions for tier up")
+
+// Flags for strongly rooting literal arrays in the feedback vector.
+DEFINE_BOOL(trace_strong_rooted_literals, false, "trace literal rooting")
 
 // Flags for optimization types.
 DEFINE_BOOL(optimize_for_size, false,
@@ -476,8 +479,7 @@ DEFINE_BOOL(turbo_loop_peeling, true, "Turbofan loop peeling")
 DEFINE_BOOL(turbo_loop_variable, true, "Turbofan loop variable optimization")
 DEFINE_BOOL(turbo_cf_optimization, true, "optimize control flow in TurboFan")
 DEFINE_BOOL(turbo_frame_elision, true, "elide frames in TurboFan")
-DEFINE_BOOL(turbo_escape, false, "enable escape analysis")
-DEFINE_IMPLICATION(turbo, turbo_escape)
+DEFINE_BOOL(turbo_escape, true, "enable escape analysis")
 DEFINE_BOOL(turbo_instruction_scheduling, false,
             "enable instruction scheduling in TurboFan")
 DEFINE_BOOL(turbo_stress_instruction_scheduling, false,
@@ -494,7 +496,7 @@ DEFINE_NEG_IMPLICATION(minimal, crankshaft)
 DEFINE_NEG_IMPLICATION(minimal, use_ic)
 
 // Flags for native WebAssembly.
-DEFINE_BOOL(expose_wasm, false, "expose WASM interface to JavaScript")
+DEFINE_BOOL(expose_wasm, true, "expose WASM interface to JavaScript")
 DEFINE_INT(wasm_num_compilation_tasks, 10,
            "number of parallel compilation tasks for wasm")
 DEFINE_BOOL(trace_wasm_encoder, false, "trace encoding of wasm code")
@@ -517,6 +519,8 @@ DEFINE_BOOL(wasm_loop_assignment_analysis, true,
 
 DEFINE_BOOL(validate_asm, false, "validate asm.js modules before compiling")
 DEFINE_IMPLICATION(ignition_staging, validate_asm)
+DEFINE_BOOL(suppress_asm_messages, false,
+            "don't emit asm.js related messages (for golden file testing)")
 DEFINE_BOOL(trace_asm_time, false, "log asm.js timing info to the console")
 
 DEFINE_BOOL(dump_wasm_module, false, "dump WASM module bytes")
@@ -693,6 +697,11 @@ DEFINE_IMPLICATION(trace_array_abuse, trace_external_array_abuse)
 // debugger
 DEFINE_BOOL(trace_debug_json, false, "trace debugging JSON request/response")
 DEFINE_BOOL(enable_liveedit, true, "enable liveedit experimental feature")
+DEFINE_BOOL(side_effect_free_debug_evaluate, false,
+            "use side-effect-free debug-evaluate for testing")
+DEFINE_BOOL(
+    trace_side_effect_free_debug_evaluate, false,
+    "print debug messages for side-effect-free debug-evaluate for testing")
 DEFINE_BOOL(hard_abort, true, "abort by crashing")
 
 // execution.cc

@@ -664,7 +664,8 @@ static inline int32_t ExecuteGrowMemory(uint32_t delta_pages,
                                         WasmInstance* instance) {
   // TODO(ahaas): Move memory allocation to wasm-module.cc for better
   // encapsulation.
-  if (delta_pages > wasm::kV8MaxWasmMemoryPages) {
+  if (delta_pages > wasm::kV8MaxWasmMemoryPages ||
+      delta_pages > instance->module->max_mem_pages) {
     return -1;
   }
   uint32_t old_size = instance->mem_size;
@@ -680,7 +681,9 @@ static inline int32_t ExecuteGrowMemory(uint32_t delta_pages,
   } else {
     DCHECK_NOT_NULL(instance->mem_start);
     new_size = old_size + delta_pages * wasm::WasmModule::kPageSize;
-    if (new_size > wasm::kV8MaxWasmMemoryPages * wasm::WasmModule::kPageSize) {
+    if (new_size / wasm::WasmModule::kPageSize > wasm::kV8MaxWasmMemoryPages ||
+        new_size / wasm::WasmModule::kPageSize >
+            instance->module->max_mem_pages) {
       return -1;
     }
     new_mem_start = static_cast<byte*>(realloc(instance->mem_start, new_size));
@@ -928,7 +931,7 @@ class CodeMap {
   InterpreterCode* Preprocess(InterpreterCode* code) {
     if (code->targets == nullptr && code->start) {
       // Compute the control targets map and the local declarations.
-      CHECK(DecodeLocalDecls(code->locals, code->start, code->end));
+      CHECK(DecodeLocalDecls(&code->locals, code->start, code->end));
       code->targets = new (zone_) ControlTransfers(
           zone_, &code->locals, code->orig_start, code->orig_end);
     }
@@ -1070,7 +1073,7 @@ class ThreadImpl : public WasmInterpreter::Thread {
     // Limit of parameters.
     sp_t plimit() { return sp + code->function->sig->parameter_count(); }
     // Limit of locals.
-    sp_t llimit() { return plimit() + code->locals.total_local_count; }
+    sp_t llimit() { return plimit() + code->locals.type_list.size(); }
   };
 
   struct Block {
@@ -1119,9 +1122,9 @@ class ThreadImpl : public WasmInterpreter::Thread {
   }
 
   pc_t InitLocals(InterpreterCode* code) {
-    for (auto p : code->locals.local_types) {
+    for (auto p : code->locals.type_list) {
       WasmVal val;
-      switch (p.first) {
+      switch (p) {
         case kWasmI32:
           val = WasmVal(static_cast<int32_t>(0));
           break;
@@ -1138,9 +1141,9 @@ class ThreadImpl : public WasmInterpreter::Thread {
           UNREACHABLE();
           break;
       }
-      stack_.insert(stack_.end(), p.second, val);
+      stack_.push_back(val);
     }
-    return code->locals.decls_encoded_size;
+    return code->locals.encoded_size;
   }
 
   void CommitPc(pc_t pc) {
@@ -1353,12 +1356,6 @@ class ThreadImpl : public WasmInterpreter::Thread {
         }
         case kExprEnd: {
           blocks_.pop_back();
-          break;
-        }
-        case kExprI8Const: {
-          ImmI8Operand operand(&decoder, code->at(pc));
-          Push(pc, WasmVal(operand.value));
-          len = 1 + operand.length;
           break;
         }
         case kExprI32Const: {
@@ -1800,7 +1797,7 @@ bool WasmInterpreter::SetBreakpoint(const WasmFunction* function, pc_t pc,
   if (!code) return false;
   size_t size = static_cast<size_t>(code->end - code->start);
   // Check bounds for {pc}.
-  if (pc < code->locals.decls_encoded_size || pc >= size) return false;
+  if (pc < code->locals.encoded_size || pc >= size) return false;
   // Make a copy of the code before enabling a breakpoint.
   if (enabled && code->orig_start == code->start) {
     code->start = reinterpret_cast<byte*>(zone_.New(size));
@@ -1821,7 +1818,7 @@ bool WasmInterpreter::GetBreakpoint(const WasmFunction* function, pc_t pc) {
   if (!code) return false;
   size_t size = static_cast<size_t>(code->end - code->start);
   // Check bounds for {pc}.
-  if (pc < code->locals.decls_encoded_size || pc >= size) return false;
+  if (pc < code->locals.encoded_size || pc >= size) return false;
   // Check if a breakpoint is present at that place in the code.
   return code->start[pc] == kInternalBreakpoint;
 }

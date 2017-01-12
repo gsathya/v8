@@ -435,7 +435,7 @@ Debug.setListener = function(listener, opt_data) {
 Debug.findScript = function(func_or_script_name) {
   if (IS_FUNCTION(func_or_script_name)) {
     return %FunctionGetScript(func_or_script_name);
-  } else if (IS_REGEXP(func_or_script_name)) {
+  } else if (%IsRegExp(func_or_script_name)) {
     var scripts = this.scripts();
     var last_result = null;
     var result_count = 0;
@@ -1094,21 +1094,12 @@ function PromiseDebugActionNameToString(name) {
     case kPromiseResolve: return "Promise.resolve";
     case kPromiseReject: return "Promise.reject";
     case kPromiseResolveThenableJob: return "PromiseResolveThenableJob";
-  }
-}
-
-function PromiseDebugActionTypeToString(type) {
-  switch (type) {
-    case kEnqueue: return "enqueue";
-    case kEnqueueRecurring: return "enqueueRecurring";
-    case kCancel: return "cancel";
-    case kWillHandle: return "willHandle";
-    case kDidHandle: return "didHandle";
+    case kDebugPromiseCollected: return "Promise collected";
   }
 }
 
 function MakeAsyncTaskEvent(type, id, name) {
-  return new AsyncTaskEvent(PromiseDebugActionTypeToString(type),
+  return new AsyncTaskEvent(type,
                             id, PromiseDebugActionNameToString(name));
 }
 

@@ -15,7 +15,6 @@ namespace v8 {
 namespace internal {
 
 class CompilationInfo;
-enum class LazyCompilationMode;
 
 namespace interpreter {
 
@@ -23,7 +22,7 @@ class LoopBuilder;
 
 class BytecodeGenerator final : public AstVisitor<BytecodeGenerator> {
  public:
-  BytecodeGenerator(CompilationInfo* info, LazyCompilationMode mode);
+  explicit BytecodeGenerator(CompilationInfo* info);
 
   void GenerateBytecode(uintptr_t stack_limit);
   Handle<BytecodeArray> FinalizeBytecode(Isolate* isolate);
@@ -110,7 +109,6 @@ class BytecodeGenerator final : public AstVisitor<BytecodeGenerator> {
   void BuildReThrow();
   void BuildAbort(BailoutReason bailout_reason);
   void BuildThrowIfHole(Handle<String> name);
-  void BuildThrowIfNotHole(Handle<String> name);
   void BuildThrowReferenceError(Handle<String> name);
   void BuildHoleCheckForVariableAssignment(Variable* variable, Token::Value op);
 
@@ -206,7 +204,6 @@ class BytecodeGenerator final : public AstVisitor<BytecodeGenerator> {
   BytecodeArrayBuilder* builder_;
   CompilationInfo* info_;
   DeclarationScope* scope_;
-  LazyCompilationMode compilation_mode_;
 
   GlobalDeclarationsBuilder* globals_builder_;
   ZoneVector<GlobalDeclarationsBuilder*> global_declarations_;

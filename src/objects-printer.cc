@@ -335,29 +335,23 @@ void JSObject::PrintProperties(std::ostream& os) {  // NOLINT
       os << "\n   ";
       descs->GetKey(i)->NamePrint(os);
       os << ": ";
-      switch (descs->GetType(i)) {
-        case DATA: {
-          FieldIndex index = FieldIndex::ForDescriptor(map(), i);
-          if (IsUnboxedDoubleField(index)) {
-            os << "<unboxed double> " << RawFastDoublePropertyAt(index);
+      PropertyDetails details = descs->GetDetails(i);
+      switch (details.location()) {
+        case kField: {
+          FieldIndex field_index = FieldIndex::ForDescriptor(map(), i);
+          if (IsUnboxedDoubleField(field_index)) {
+            os << "<unboxed double> " << RawFastDoublePropertyAt(field_index);
           } else {
-            os << Brief(RawFastPropertyAt(index));
+            os << Brief(RawFastPropertyAt(field_index));
           }
-          os << " (data field at offset " << index.property_index() << ")";
           break;
         }
-        case ACCESSOR: {
-          FieldIndex index = FieldIndex::ForDescriptor(map(), i);
-          os << " (accessor field at offset " << index.property_index() << ")";
-          break;
-        }
-        case DATA_CONSTANT:
-          os << Brief(descs->GetConstant(i)) << " (data constant)";
-          break;
-        case ACCESSOR_CONSTANT:
-          os << Brief(descs->GetCallbacksObject(i)) << " (accessor constant)";
+        case kDescriptor:
+          os << Brief(descs->GetValue(i));
           break;
       }
+      os << " ";
+      details.PrintAsFastTo(os, PropertyDetails::kForProperties);
     }
   } else if (IsJSGlobalObject()) {
     global_dictionary()->Print(os);
@@ -727,10 +721,15 @@ void TypeFeedbackMetadata::TypeFeedbackMetadataPrint(
   os << "\n - slot_count: " << slot_count();
 
   TypeFeedbackMetadataIterator iter(this);
+  int parameter_index = 0;
   while (iter.HasNext()) {
     FeedbackVectorSlot slot = iter.Next();
     FeedbackVectorSlotKind kind = iter.kind();
     os << "\n Slot " << slot << " " << kind;
+    if (TypeFeedbackMetadata::SlotRequiresParameter(kind)) {
+      int parameter_value = this->GetParameter(parameter_index++);
+      os << " [" << parameter_value << "]";
+    }
   }
   os << "\n";
 }
@@ -751,6 +750,7 @@ void TypeFeedbackVector::TypeFeedbackVectorPrint(std::ostream& os) {  // NOLINT
     return;
   }
 
+  int parameter_index = 0;
   TypeFeedbackMetadataIterator iter(metadata());
   while (iter.HasNext()) {
     FeedbackVectorSlot slot = iter.Next();
@@ -802,6 +802,12 @@ void TypeFeedbackVector::TypeFeedbackVectorPrint(std::ostream& os) {  // NOLINT
       case FeedbackVectorSlotKind::STORE_DATA_PROPERTY_IN_LITERAL_IC: {
         StoreDataPropertyInLiteralICNexus nexus(this, slot);
         os << Code::ICState2String(nexus.StateFromFeedback());
+        break;
+      }
+      case FeedbackVectorSlotKind::CREATE_CLOSURE: {
+        // TODO(mvstanton): Integrate this into the iterator.
+        int parameter_value = metadata()->GetParameter(parameter_index++);
+        os << "[" << parameter_value << "]";
         break;
       }
       case FeedbackVectorSlotKind::GENERAL:
@@ -1131,7 +1137,8 @@ void Cell::CellPrint(std::ostream& os) {  // NOLINT
 void PropertyCell::PropertyCellPrint(std::ostream& os) {  // NOLINT
   HeapObject::PrintHeader(os, "PropertyCell");
   os << "\n - value: " << Brief(value());
-  os << "\n - details: " << property_details();
+  os << "\n - details: ";
+  property_details().PrintAsSlowTo(os);
   PropertyCellType cell_type = property_details().cell_type();
   os << "\n - cell_type: ";
   if (value()->IsTheHole(GetIsolate())) {
@@ -1238,7 +1245,6 @@ void PromiseResolveThenableJobInfo::PromiseResolveThenableJobInfoPrint(
 void PromiseReactionJobInfo::PromiseReactionJobInfoPrint(
     std::ostream& os) {  // NOLINT
   HeapObject::PrintHeader(os, "PromiseReactionJobInfo");
-  os << "\n - promise: " << Brief(promise());
   os << "\n - value: " << Brief(value());
   os << "\n - tasks: " << Brief(tasks());
   os << "\n - deferred_promise: " << Brief(deferred_promise());
@@ -1272,9 +1278,9 @@ void Module::ModulePrint(std::ostream& os) {  // NOLINT
 }
 
 void JSModuleNamespace::JSModuleNamespacePrint(std::ostream& os) {  // NOLINT
-  HeapObject::PrintHeader(os, "JSModuleNamespace");
+  JSObjectPrintHeader(os, this, "JSModuleNamespace");
   os << "\n - module: " << Brief(module());
-  os << "\n";
+  JSObjectPrintBody(os, this);
 }
 
 void PrototypeInfo::PrototypeInfoPrint(std::ostream& os) {  // NOLINT
@@ -1411,7 +1417,7 @@ void AllocationSite::AllocationSitePrint(std::ostream& os) {  // NOLINT
   } else if (transition_info()->IsJSArray()) {
     os << "Array literal " << Brief(transition_info());
   } else {
-    os << "unknown transition_info" << Brief(transition_info());
+    os << "unknown transition_info " << Brief(transition_info());
   }
   os << "\n";
 }
@@ -1573,15 +1579,43 @@ void DescriptorArray::Print() {
 
 void DescriptorArray::PrintDescriptors(std::ostream& os) {  // NOLINT
   HandleScope scope(GetIsolate());
-  os << "Descriptor array #" << number_of_descriptors();
+  os << "Descriptor array #" << number_of_descriptors() << ":";
   for (int i = 0; i < number_of_descriptors(); i++) {
-    Descriptor desc;
-    Get(i, &desc);
-    os << "\n " << i << ": " << desc;
+    Name* key = GetKey(i);
+    os << "\n  [" << i << "]: ";
+#ifdef OBJECT_PRINT
+    key->NamePrint(os);
+#else
+    key->ShortPrint(os);
+#endif
+    os << " ";
+    PrintDescriptorDetails(os, i, PropertyDetails::kPrintFull);
   }
   os << "\n";
 }
 
+void DescriptorArray::PrintDescriptorDetails(std::ostream& os, int descriptor,
+                                             PropertyDetails::PrintMode mode) {
+  PropertyDetails details = GetDetails(descriptor);
+  details.PrintAsFastTo(os, mode);
+  os << " @ ";
+  Object* value = GetValue(descriptor);
+  switch (details.location()) {
+    case kField: {
+      FieldType* field_type = Map::UnwrapFieldType(value);
+      field_type->PrintTo(os);
+      break;
+    }
+    case kDescriptor:
+      os << Brief(value);
+      if (value->IsAccessorPair()) {
+        AccessorPair* pair = AccessorPair::cast(value);
+        os << "(get: " << Brief(pair->getter())
+           << ", set: " << Brief(pair->setter()) << ")";
+      }
+      break;
+  }
+}
 
 void TransitionArray::Print() {
   OFStream os(stdout);
@@ -1619,18 +1653,13 @@ void TransitionArray::PrintTransitions(std::ostream& os, Object* transitions,
     } else if (key == heap->strict_function_transition_symbol()) {
       os << " (transition to strict function)";
     } else {
-      PropertyDetails details = GetTargetDetails(key, target);
+      DCHECK(!IsSpecialTransition(key));
       os << "(transition to ";
-      if (details.location() == kDescriptor) {
-        os << "immutable ";
-      }
-      os << (details.kind() == kData ? "data" : "accessor");
-      if (details.location() == kDescriptor) {
-        Object* value =
-            target->instance_descriptors()->GetValue(target->LastAdded());
-        os << " " << Brief(value);
-      }
-      os << "), attrs: " << details.attributes();
+      int descriptor = target->LastAdded();
+      DescriptorArray* descriptors = target->instance_descriptors();
+      descriptors->PrintDescriptorDetails(os, descriptor,
+                                          PropertyDetails::kForTransitions);
+      os << ")";
     }
     os << " -> " << Brief(target);
   }

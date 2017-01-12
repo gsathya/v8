@@ -135,13 +135,18 @@ uint32_t RelocInfo::wasm_memory_size_reference() {
   return Memory::uint32_at(pc_);
 }
 
+uint32_t RelocInfo::wasm_function_table_size_reference() {
+  DCHECK(IsWasmFunctionTableSizeReference(rmode_));
+  return Memory::uint32_at(pc_);
+}
+
 void RelocInfo::unchecked_update_wasm_memory_reference(
     Address address, ICacheFlushMode flush_mode) {
   Memory::Address_at(pc_) = address;
 }
 
-void RelocInfo::unchecked_update_wasm_memory_size(uint32_t size,
-                                                  ICacheFlushMode flush_mode) {
+void RelocInfo::unchecked_update_wasm_size(uint32_t size,
+                                           ICacheFlushMode flush_mode) {
   Memory::uint32_at(pc_) = size;
 }
 
@@ -2103,11 +2108,12 @@ void Assembler::testb(const Operand& op, Register reg) {
 void Assembler::testw(Register dst, Register src) {
   EnsureSpace ensure_space(this);
   emit(0x66);
-  if (src.low_bits() == 4) {
-    emit_rex_32(src, dst);
+  if (!dst.is_byte_register() || !src.is_byte_register()) {
+    // Register is not one of al, bl, cl, dl.  Its encoding needs REX.
+    emit_rex_32(dst, src);
   }
   emit(0x85);
-  emit_modrm(src, dst);
+  emit_modrm(dst, src);
 }
 
 void Assembler::testw(Register reg, Immediate mask) {
@@ -2118,7 +2124,7 @@ void Assembler::testw(Register reg, Immediate mask) {
     emit(0xA9);
     emitw(mask.value_);
   } else {
-    if (reg.low_bits() == 4) {
+    if (!reg.is_byte_register()) {
       emit_rex_32(reg);
     }
     emit(0xF7);

@@ -8,6 +8,7 @@
 #include "src/interpreter/bytecode-array-iterator.h"
 #include "src/interpreter/bytecode-label.h"
 #include "src/interpreter/bytecode-register-allocator.h"
+#include "src/objects-inl.h"
 #include "test/unittests/test-utils.h"
 
 namespace v8 {
@@ -115,7 +116,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
       .LoadLookupGlobalSlot(name, TypeofMode::INSIDE_TYPEOF, 1, 0);
 
   // Emit closure operations.
-  builder.CreateClosure(0, NOT_TENURED);
+  builder.CreateClosure(0, 1, NOT_TENURED);
 
   // Emit create context operation.
   builder.CreateBlockContext(factory->NewScopeInfo(1));
@@ -337,7 +338,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
       .StoreLookupSlot(wide_name, LanguageMode::STRICT);
 
   // CreateClosureWide
-  builder.CreateClosure(1000, NOT_TENURED);
+  builder.CreateClosure(1000, 321, NOT_TENURED);
 
   // Emit wide variant of literal creation operations.
   builder

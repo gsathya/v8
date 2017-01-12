@@ -33,6 +33,19 @@ MAX_LINE_LENGTH = 512
 # For ignoring lines before carets and to ignore caret positions.
 CARET_RE = re.compile(r'^\s*\^\s*$')
 
+# Ignore by original source files. Map from bug->relative file paths in V8,
+# e.g. '/v8/test/mjsunit/d8-performance-now.js' including /v8/. A test will
+# be suppressed if one of the files below was used to mutate the test.
+IGNORE_SOURCES = {
+  # This contains a usage of f.arguments that often fires.
+  'crbug.com/662424': '/v8/test/mjsunit/regress/regress-2989.js',
+
+  # crbug.com/680110
+  'crbug.com/680110': '/v8/test/mjsunit/asm/pointer-masking.js',
+  'crbug.com/680110': '/v8/test/mjsunit/compiler/regress-443744.js',
+  'crbug.com/680110': '/v8/test/mjsunit/regress/wasm/regression-647649.js',
+}
+
 # Ignore by test case pattern. Map from bug->regexp.
 # Regular expressions are assumed to be compiled. We use regexp.match.
 IGNORE_TEST_CASES = {
@@ -46,6 +59,9 @@ IGNORE_TEST_CASES = {
   'crbug.com/666308':
       re.compile(r'.*End stripped down and modified version.*'
                  r'\.prototype.*instanceof.*.*', re.S),
+
+  'crbug.com/679957':
+      re.compile(r'.*performance\.now.*', re.S),
 }
 
 # Ignore by output pattern. Map from config->bug->regexp. Config '' is used
@@ -103,6 +119,9 @@ ALLOWED_LINE_DIFFS = [
   # crbug.com/662840
   r"^.*(?:Trying to access ')?(\w*)(?:(?:' through proxy)|"
   r"(?: is not defined))$",
+
+  # crbug.com/680064. This subsumes one of the above expressions.
+  r'^(.*)TypeError: .* function$',
 ]
 
 # Lines matching any of the following regular expressions will be ignored.
@@ -116,6 +135,9 @@ IGNORE_LINES = [
 
   # crbug.com/677032
   r'^.*:\d+:.*asm\.js.*: success$',
+
+  # crbug.com/680064
+  r'^\s*at .* \(<anonymous>\)$',
 ]
 
 
@@ -210,7 +232,10 @@ class Suppression(object):
   def diff(self, output1, output2):
     return None
 
-  def ignore(self, testcase):
+  def ignore_by_metadata(self, metadata):
+    return False
+
+  def ignore_by_content(self, testcase):
     return False
 
   def ignore_by_output1(self, output):
@@ -236,9 +261,15 @@ class V8Suppression(Suppression):
         IGNORE_LINES,
     )
 
-  def ignore(self, testcase):
+  def ignore_by_content(self, testcase):
     for bug, exp in IGNORE_TEST_CASES.iteritems():
       if exp.match(testcase):
+        return bug
+    return False
+
+  def ignore_by_metadata(self, metadata):
+    for bug, source in IGNORE_SOURCES.iteritems():
+      if source in metadata['sources']:
         return bug
     return False
 

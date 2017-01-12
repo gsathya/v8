@@ -21,6 +21,10 @@
 #include "src/snapshot/snapshot.h"
 #include "src/wasm/wasm-js.h"
 
+#if V8_I18N_SUPPORT
+#include "src/i18n.h"
+#endif  // V8_I18N_SUPPORT
+
 namespace v8 {
 namespace internal {
 
@@ -140,7 +144,9 @@ class Genesis BASE_EMBEDDED {
  public:
   Genesis(Isolate* isolate, MaybeHandle<JSGlobalProxy> maybe_global_proxy,
           v8::Local<v8::ObjectTemplate> global_proxy_template,
-          size_t context_snapshot_index, GlobalContextType context_type);
+          size_t context_snapshot_index,
+          v8::DeserializeInternalFieldsCallback internal_fields_deserializer,
+          GlobalContextType context_type);
   Genesis(Isolate* isolate, MaybeHandle<JSGlobalProxy> maybe_global_proxy,
           v8::Local<v8::ObjectTemplate> global_proxy_template);
   ~Genesis() { }
@@ -309,10 +315,12 @@ Handle<Context> Bootstrapper::CreateEnvironment(
     MaybeHandle<JSGlobalProxy> maybe_global_proxy,
     v8::Local<v8::ObjectTemplate> global_proxy_template,
     v8::ExtensionConfiguration* extensions, size_t context_snapshot_index,
+    v8::DeserializeInternalFieldsCallback internal_fields_deserializer,
     GlobalContextType context_type) {
   HandleScope scope(isolate_);
   Genesis genesis(isolate_, maybe_global_proxy, global_proxy_template,
-                  context_snapshot_index, context_type);
+                  context_snapshot_index, internal_fields_deserializer,
+                  context_type);
   Handle<Context> env = genesis.result();
   if (env.is_null() || !InstallExtensions(env, extensions)) {
     return Handle<Context>();
@@ -331,14 +339,15 @@ Handle<JSGlobalProxy> Bootstrapper::NewRemoteContext(
 }
 
 void Bootstrapper::DetachGlobal(Handle<Context> env) {
-  env->GetIsolate()->counters()->errors_thrown_per_context()->AddSample(
-    env->GetErrorsThrown());
+  Isolate* isolate = env->GetIsolate();
+  isolate->counters()->errors_thrown_per_context()->AddSample(
+      env->GetErrorsThrown());
 
-  Factory* factory = env->GetIsolate()->factory();
+  Heap* heap = isolate->heap();
   Handle<JSGlobalProxy> global_proxy(JSGlobalProxy::cast(env->global_proxy()));
-  global_proxy->set_native_context(*factory->null_value());
-  JSObject::ForceSetPrototype(global_proxy, factory->null_value());
-  global_proxy->map()->SetConstructor(*factory->null_value());
+  global_proxy->set_native_context(heap->null_value());
+  JSObject::ForceSetPrototype(global_proxy, isolate->factory()->null_value());
+  global_proxy->map()->SetConstructor(heap->null_value());
   if (FLAG_track_detached_contexts) {
     env->GetIsolate()->AddDetachedContext(env);
   }
@@ -1899,6 +1908,9 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
     SimpleInstallFunction(promise_fun, "resolve", Builtins::kPromiseResolve, 1,
                           true, DONT_ENUM);
 
+    SimpleInstallFunction(promise_fun, "reject", Builtins::kPromiseReject, 1,
+                          true, DONT_ENUM);
+
     Handle<Map> prototype_map(prototype->map());
     Map::SetShouldBeFastPrototypeMap(prototype_map, true, isolate);
 
@@ -1907,19 +1919,12 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
     native_context()->set_promise_prototype_map(*prototype_map);
 
     {  // Internal: PromiseInternalConstructor
+       // Also exposed as extrasUtils.createPromise.
       Handle<JSFunction> function =
           SimpleCreateFunction(isolate, factory->empty_string(),
-                               Builtins::kPromiseInternalConstructor, 1, false);
+                               Builtins::kPromiseInternalConstructor, 1, true);
       InstallWithIntrinsicDefaultProto(
           isolate, function, Context::PROMISE_INTERNAL_CONSTRUCTOR_INDEX);
-    }
-
-    {  // Internal: PromiseCreateAndSet
-      Handle<JSFunction> function =
-          SimpleCreateFunction(isolate, factory->empty_string(),
-                               Builtins::kPromiseCreateAndSet, 2, false);
-      InstallWithIntrinsicDefaultProto(isolate, function,
-                                       Context::PROMISE_CREATE_AND_SET_INDEX);
     }
 
     {  // Internal: IsPromise
@@ -1938,16 +1943,16 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
     }
 
     {  // Internal: ResolvePromise
-      Handle<JSFunction> function =
-          SimpleCreateFunction(isolate, factory->empty_string(),
-                               Builtins::kResolvePromise, 2, false);
+       // Also exposed as extrasUtils.resolvePromise.
+      Handle<JSFunction> function = SimpleCreateFunction(
+          isolate, factory->empty_string(), Builtins::kResolvePromise, 2, true);
       InstallWithIntrinsicDefaultProto(isolate, function,
                                        Context::PROMISE_RESOLVE_INDEX);
     }
 
     {  // Internal: PromiseHandle
       Handle<JSFunction> function = SimpleCreateFunction(
-          isolate, factory->empty_string(), Builtins::kPromiseHandle, 6, true);
+          isolate, factory->empty_string(), Builtins::kPromiseHandle, 5, false);
       InstallWithIntrinsicDefaultProto(isolate, function,
                                        Context::PROMISE_HANDLE_INDEX);
       // Set up catch prediction
@@ -1981,7 +1986,7 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
                  isolate);
       info =
           factory->NewSharedFunctionInfo(factory->empty_string(), code, false);
-      info->set_internal_formal_parameter_count(2);
+      info->set_internal_formal_parameter_count(1);
       info->set_length(1);
       native_context()->set_promise_reject_shared_fun(*info);
     }
@@ -2350,11 +2355,14 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
         factory->Object_string(),
         static_cast<PropertyAttributes>(DONT_ENUM | READ_ONLY));
     Handle<JSFunction> date_time_format_constructor = InstallFunction(
-        intl, "DateTimeFormat", JS_OBJECT_TYPE, JSObject::kHeaderSize,
+        intl, "DateTimeFormat", JS_OBJECT_TYPE, DateFormat::kSize,
         date_time_format_prototype, Builtins::kIllegal);
     JSObject::AddProperty(date_time_format_prototype,
                           factory->constructor_string(),
                           date_time_format_constructor, DONT_ENUM);
+    InstallWithIntrinsicDefaultProto(
+        isolate, date_time_format_constructor,
+        Context::INTL_DATE_TIME_FORMAT_FUNCTION_INDEX);
 
     Handle<JSObject> number_format_prototype =
         factory->NewJSObject(isolate->object_function(), TENURED);
@@ -2364,11 +2372,14 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
         factory->Object_string(),
         static_cast<PropertyAttributes>(DONT_ENUM | READ_ONLY));
     Handle<JSFunction> number_format_constructor = InstallFunction(
-        intl, "NumberFormat", JS_OBJECT_TYPE, JSObject::kHeaderSize,
+        intl, "NumberFormat", JS_OBJECT_TYPE, NumberFormat::kSize,
         number_format_prototype, Builtins::kIllegal);
     JSObject::AddProperty(number_format_prototype,
                           factory->constructor_string(),
                           number_format_constructor, DONT_ENUM);
+    InstallWithIntrinsicDefaultProto(
+        isolate, number_format_constructor,
+        Context::INTL_NUMBER_FORMAT_FUNCTION_INDEX);
 
     Handle<JSObject> collator_prototype =
         factory->NewJSObject(isolate->object_function(), TENURED);
@@ -2378,10 +2389,12 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
         factory->Object_string(),
         static_cast<PropertyAttributes>(DONT_ENUM | READ_ONLY));
     Handle<JSFunction> collator_constructor =
-        InstallFunction(intl, "Collator", JS_OBJECT_TYPE, JSObject::kHeaderSize,
+        InstallFunction(intl, "Collator", JS_OBJECT_TYPE, Collator::kSize,
                         collator_prototype, Builtins::kIllegal);
     JSObject::AddProperty(collator_prototype, factory->constructor_string(),
                           collator_constructor, DONT_ENUM);
+    InstallWithIntrinsicDefaultProto(isolate, collator_constructor,
+                                     Context::INTL_COLLATOR_FUNCTION_INDEX);
 
     Handle<JSObject> v8_break_iterator_prototype =
         factory->NewJSObject(isolate->object_function(), TENURED);
@@ -2391,11 +2404,14 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
         factory->Object_string(),
         static_cast<PropertyAttributes>(DONT_ENUM | READ_ONLY));
     Handle<JSFunction> v8_break_iterator_constructor = InstallFunction(
-        intl, "v8BreakIterator", JS_OBJECT_TYPE, JSObject::kHeaderSize,
+        intl, "v8BreakIterator", JS_OBJECT_TYPE, V8BreakIterator::kSize,
         v8_break_iterator_prototype, Builtins::kIllegal);
     JSObject::AddProperty(v8_break_iterator_prototype,
                           factory->constructor_string(),
                           v8_break_iterator_constructor, DONT_ENUM);
+    InstallWithIntrinsicDefaultProto(
+        isolate, v8_break_iterator_constructor,
+        Context::INTL_V8_BREAK_ITERATOR_FUNCTION_INDEX);
   }
 #endif  // V8_I18N_SUPPORT
 
@@ -2567,11 +2583,14 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
     {  // Install @@toStringTag.
       PropertyAttributes attribs =
           static_cast<PropertyAttributes>(DONT_DELETE | DONT_ENUM | READ_ONLY);
-      Descriptor d = Descriptor::DataConstant(
-          factory->to_string_tag_symbol(),
-          factory->NewStringFromAsciiChecked("Module"), attribs);
+      Descriptor d =
+          Descriptor::DataField(factory->to_string_tag_symbol(),
+                                JSModuleNamespace::kToStringTagFieldIndex,
+                                attribs, Representation::Tagged());
       map->AppendDescriptor(&d);
     }
+
+    map->SetInObjectProperties(JSModuleNamespace::kInObjectFieldCount);
   }
 
   {  // -- I t e r a t o r R e s u l t
@@ -3441,7 +3460,6 @@ EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_tailcalls)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(datetime_format_to_parts)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(icu_case_mapping)
 #endif
-EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_async_await)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_restrictive_generators)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_trailing_commas)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_class_fields)
@@ -3638,6 +3656,8 @@ bool Genesis::InstallNatives(GlobalContextType context_type) {
 
   InstallInternalArray(extras_utils, "InternalPackedArray", FAST_ELEMENTS);
 
+  InstallFunction(extras_utils, isolate()->promise_internal_constructor(),
+                  factory()->NewStringFromAsciiChecked("createPromise"));
   InstallFunction(extras_utils, isolate()->promise_resolve(),
                   factory()->NewStringFromAsciiChecked("resolvePromise"));
 
@@ -4001,7 +4021,6 @@ bool Genesis::InstallExperimentalNatives() {
   static const char* datetime_format_to_parts_natives[] = {
       "native datetime-format-to-parts.js", nullptr};
 #endif
-  static const char* harmony_async_await_natives[] = {nullptr};
   static const char* harmony_restrictive_generators_natives[] = {nullptr};
   static const char* harmony_trailing_commas_natives[] = {nullptr};
   static const char* harmony_class_fields_natives[] = {nullptr};
@@ -4150,8 +4169,6 @@ bool Genesis::InstallSpecialObjects(Handle<Context> native_context) {
 
   Factory* factory = isolate->factory();
   HandleScope scope(isolate);
-  Handle<JSGlobalObject> global(JSGlobalObject::cast(
-      native_context->global_object()));
 
   Handle<JSObject> Error = isolate->error_function();
   Handle<String> name =
@@ -4159,7 +4176,9 @@ bool Genesis::InstallSpecialObjects(Handle<Context> native_context) {
   Handle<Smi> stack_trace_limit(Smi::FromInt(FLAG_stack_trace_limit), isolate);
   JSObject::AddProperty(Error, name, stack_trace_limit, NONE);
 
-  WasmJs::Install(isolate, global);
+  if (FLAG_expose_wasm || FLAG_validate_asm) {
+    WasmJs::Install(isolate);
+  }
 
   return true;
 }
@@ -4362,8 +4381,8 @@ void Genesis::TransferNamedProperties(Handle<JSObject> from,
         Handle<DescriptorArray>(from->map()->instance_descriptors());
     for (int i = 0; i < from->map()->NumberOfOwnDescriptors(); i++) {
       PropertyDetails details = descs->GetDetails(i);
-      switch (details.type()) {
-        case DATA: {
+      if (details.location() == kField) {
+        if (details.kind() == kData) {
           HandleScope inner(isolate());
           Handle<Name> key = Handle<Name>(descs->GetKey(i));
           FieldIndex index = FieldIndex::ForDescriptor(from->map(), i);
@@ -4371,18 +4390,21 @@ void Genesis::TransferNamedProperties(Handle<JSObject> from,
           Handle<Object> value = Handle<Object>(from->RawFastPropertyAt(index),
                                                 isolate());
           JSObject::AddProperty(to, key, value, details.attributes());
-          break;
+        } else {
+          DCHECK_EQ(kAccessor, details.kind());
+          UNREACHABLE();
         }
-        case DATA_CONSTANT: {
+
+      } else {
+        DCHECK_EQ(kDescriptor, details.location());
+        if (details.kind() == kData) {
           HandleScope inner(isolate());
           Handle<Name> key = Handle<Name>(descs->GetKey(i));
           Handle<Object> constant(descs->GetConstant(i), isolate());
           JSObject::AddProperty(to, key, constant, details.attributes());
-          break;
-        }
-        case ACCESSOR:
-          UNREACHABLE();
-        case ACCESSOR_CONSTANT: {
+
+        } else {
+          DCHECK_EQ(kAccessor, details.kind());
           Handle<Name> key(descs->GetKey(i));
           LookupIterator it(to, key, LookupIterator::OWN_SKIP_INTERCEPTOR);
           CHECK_NE(LookupIterator::ACCESS_CHECK, it.state());
@@ -4395,7 +4417,6 @@ void Genesis::TransferNamedProperties(Handle<JSObject> from,
           PropertyDetails d(details.attributes(), ACCESSOR_CONSTANT, i + 1,
                             PropertyCellType::kMutable);
           JSObject::SetNormalizedProperty(to, key, callbacks, d);
-          break;
         }
       }
     }
@@ -4517,10 +4538,12 @@ class NoTrackDoubleFieldsForSerializerScope {
   bool enabled_;
 };
 
-Genesis::Genesis(Isolate* isolate,
-                 MaybeHandle<JSGlobalProxy> maybe_global_proxy,
-                 v8::Local<v8::ObjectTemplate> global_proxy_template,
-                 size_t context_snapshot_index, GlobalContextType context_type)
+Genesis::Genesis(
+    Isolate* isolate, MaybeHandle<JSGlobalProxy> maybe_global_proxy,
+    v8::Local<v8::ObjectTemplate> global_proxy_template,
+    size_t context_snapshot_index,
+    v8::DeserializeInternalFieldsCallback internal_fields_deserializer,
+    GlobalContextType context_type)
     : isolate_(isolate), active_(isolate->bootstrapper()) {
   NoTrackDoubleFieldsForSerializerScope disable_scope(isolate);
   result_ = Handle<Context>::null();
@@ -4567,7 +4590,8 @@ Genesis::Genesis(Isolate* isolate,
   // Also create a context from scratch to expose natives, if required by flag.
   if (!isolate->initialized_from_snapshot() ||
       !Snapshot::NewContextFromSnapshot(isolate, global_proxy,
-                                        context_snapshot_index)
+                                        context_snapshot_index,
+                                        internal_fields_deserializer)
            .ToHandle(&native_context_)) {
     native_context_ = Handle<Context>();
   }

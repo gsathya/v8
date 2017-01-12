@@ -404,11 +404,9 @@ typedef List<HeapObject*> DebugObjectCache;
   V(intptr_t*, api_external_references, nullptr)                              \
   V(AddressToIndexHashMap*, external_reference_map, nullptr)                  \
   V(HeapObjectToIndexHashMap*, root_index_map, nullptr)                       \
-  V(v8::DeserializeInternalFieldsCallback,                                    \
-    deserialize_internal_fields_callback, nullptr)                            \
   V(int, pending_microtask_count, 0)                                          \
   V(int, debug_microtask_count, kDebugPromiseFirstID)                         \
-  V(Object*, js_promise_hook, nullptr)                                         \
+  V(Object*, js_promise_hook, nullptr)                                        \
   V(HStatistics*, hstatistics, nullptr)                                       \
   V(CompilationStatistics*, turbo_statistics, nullptr)                        \
   V(HTracer*, htracer, nullptr)                                               \
@@ -423,6 +421,8 @@ typedef List<HeapObject*> DebugObjectCache;
   V(bool, is_profiling, false)                                                \
   /* true if a trace is being formatted through Error.prepareStackTrace. */   \
   V(bool, formatting_stack_trace, false)                                      \
+  /* Perform side effect checks on function call and API callbacks. */        \
+  V(bool, needs_side_effect_check, false)                                     \
   ISOLATE_INIT_SIMULATOR_LIST(V)
 
 #define THREAD_LOCAL_TOP_ACCESSOR(type, name)                        \
@@ -1109,7 +1109,6 @@ class Isolate {
   void EnqueueMicrotask(Handle<Object> microtask);
   void RunMicrotasks();
   bool IsRunningMicrotasks() const { return is_running_microtasks_; }
-  int GetNextDebugMicrotaskId() { return debug_microtask_count_++; }
 
   Handle<Symbol> SymbolFor(Heap::RootListIndex dictionary_index,
                            Handle<String> name, bool private_symbol);

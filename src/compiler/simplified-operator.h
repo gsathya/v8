@@ -421,32 +421,19 @@ std::ostream& operator<<(std::ostream&, CheckMapsParameters const&);
 CheckMapsParameters const& CheckMapsParametersOf(Operator const*)
     V8_WARN_UNUSED_RESULT;
 
-enum class DynamicCheckMapsFlag : uint8_t {
-  kNone = 0u,
-  kTryMigrateInstance = 1u << 0,
-};
-using DynamicCheckMapsFlags = base::Flags<DynamicCheckMapsFlag>;
-
-DEFINE_OPERATORS_FOR_FLAGS(DynamicCheckMapsFlags)
-
-std::ostream& operator<<(std::ostream&, DynamicCheckMapsFlags);
-
 // A descriptor for map checks. The {feedback} parameter is optional.
 // If {feedback} references a valid CallIC slot and this MapCheck fails,
 // then speculation on that CallIC slot will be disabled.
 class DynamicCheckMapsParameters final {
  public:
-  DynamicCheckMapsParameters(DynamicCheckMapsFlags flags,
-                             Handle<Object> handler,
+  DynamicCheckMapsParameters(Handle<Object> handler,
                              const FeedbackSource& feedback)
-      : flags_(flags), handler_(handler), feedback_(feedback) {}
+      : handler_(handler), feedback_(feedback) {}
 
-  DynamicCheckMapsFlags flags() const { return flags_; }
   Handle<Object> handler() const { return handler_; }
   FeedbackSource const& feedback() const { return feedback_; }
 
  private:
-  DynamicCheckMapsFlags const flags_;
   Handle<Object> const handler_;
   FeedbackSource const feedback_;
 };
@@ -846,7 +833,7 @@ class V8_EXPORT_PRIVATE SimplifiedOperatorBuilder final
   const Operator* CheckInternalizedString();
   const Operator* CheckMaps(CheckMapsFlags, ZoneHandleSet<Map>,
                             const FeedbackSource& = FeedbackSource());
-  const Operator* DynamicCheckMaps(DynamicCheckMapsFlags, Handle<Object> handler,
+  const Operator* DynamicCheckMaps(Handle<Object> handler,
                                    const FeedbackSource& feedback);
   const Operator* CheckNotTaggedHole();
   const Operator* CheckNumber(const FeedbackSource& feedback);

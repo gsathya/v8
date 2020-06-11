@@ -286,18 +286,9 @@ CheckMapsParameters const& CheckMapsParametersOf(Operator const* op) {
   return OpParameter<CheckMapsParameters>(op);
 }
 
-std::ostream& operator<<(std::ostream& os, DynamicCheckMapsFlags flags) {
-  if (flags & DynamicCheckMapsFlag::kTryMigrateInstance) {
-    return os << "TryMigrateInstance";
-  } else {
-    return os << "None";
-  }
-}
-
 bool operator==(DynamicCheckMapsParameters const& lhs,
                 DynamicCheckMapsParameters const& rhs) {
-  return lhs.flags() == rhs.flags() &&
-         lhs.handler().address() == rhs.handler().address() &&
+  return lhs.handler().address() == rhs.handler().address() &&
          lhs.feedback() == rhs.feedback();
 }
 
@@ -305,13 +296,12 @@ bool operator==(DynamicCheckMapsParameters const& lhs,
 // handler?
 size_t hash_value(DynamicCheckMapsParameters const& p) {
   FeedbackSource::Hash feedback_hash;
-  return base::hash_combine(p.flags(), p.handler().address(),
-                            feedback_hash(p.feedback()));
+  return base::hash_combine(p.handler().address(), feedback_hash(p.feedback()));
 }
 
 std::ostream& operator<<(std::ostream& os,
                          DynamicCheckMapsParameters const& p) {
-  return os << p.flags() << ", " << p.handler() << ", " << p.feedback();
+  return os << p.handler() << ", " << p.feedback();
 }
 
 DynamicCheckMapsParameters const& DynamicCheckMapsParametersOf(
@@ -1488,9 +1478,8 @@ const Operator* SimplifiedOperatorBuilder::CheckMaps(
 }
 
 const Operator* SimplifiedOperatorBuilder::DynamicCheckMaps(
-    DynamicCheckMapsFlags flags, Handle<Object> handler,
-    const FeedbackSource& feedback) {
-  DynamicCheckMapsParameters const parameters(flags, handler, feedback);
+    Handle<Object> handler, const FeedbackSource& feedback) {
+  DynamicCheckMapsParameters const parameters(handler, feedback);
   return new (zone()) Operator1<DynamicCheckMapsParameters>(  // --
       IrOpcode::kDynamicCheckMaps,                            // opcode
       Operator::kNoThrow | Operator::kNoWrite,                // flags

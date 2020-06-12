@@ -1853,9 +1853,6 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
   Node* value = node->InputAt(0);
 
   FeedbackSource const& feedback = p.feedback();
-
-  auto done = __ MakeLabel();
-
   Node* vector = __ HeapConstant(feedback.vector);
   Node* feedback_slot = __ LoadField(
       AccessBuilder::ForFeedbackVectorSlot(feedback.index()), vector);
@@ -1864,9 +1861,13 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
                       ? __ SmiConstant(Smi::ToInt(*p.handler()))
                       : __ HeapConstant(Handle<HeapObject>::cast(p.handler()));
 
+  auto done = __ MakeLabel();
   auto maybe_poly = __ MakeLabel();
 
-  {
+  // Emit monomorphic check only if current state is monorphic,
+  // otherwise it's not necessary as we can never go back to
+  // monomorphic state.
+  if (feedback.state == FeedbackSource::kMonomorphic) {
     Node* mono_check = BuildIsWeakReferenceTo(feedback_slot, value_map);
     __ GotoIfNot(mono_check, &maybe_poly);
 
@@ -1877,6 +1878,9 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
                        frame_state, IsSafetyCheck::kCriticalSafetyCheck);
 
     __ Goto(&done);
+  } else {
+    DCHECK(feedback.state == FeedbackSource::kPolymorphic);
+    __ Goto(&maybe_poly);
   }
 
   __ Bind(&maybe_poly);
@@ -1892,9 +1896,10 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
                        is_weak_fixed_array_check, frame_state,
                        IsSafetyCheck::kCriticalSafetyCheck);
 
+    int kEntrySize = 2;
     Node* length =
         __ LoadField(AccessBuilder::ForWeakFixedArrayLength(), feedback_slot);
-    length = ChangeSmiToInt32(length);
+    length = __ Int32Sub(ChangeSmiToInt32(length), __ Int32Constant(1));
     auto loop = __ MakeLoopLabel(MachineType::PointerRepresentation());
     __ Goto(&loop, __ Int32Constant(0));
     __ Bind(&loop);
@@ -1913,15 +1918,15 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
       // check?
       __ GotoIfNot(BuildIsWeakReferenceTo(maybe_map, value_map),
                    &continue_loop);
-      Node* maybe_handler =
-          __ LoadElement(AccessBuilder::ForWeakFixedArrayElement(),
-                         feedback_slot, __ IntAdd(index, __ IntPtrConstant(1)));
+      Node* maybe_handler = __ LoadElement(
+          AccessBuilder::ForWeakFixedArrayElement(), feedback_slot,
+          __ Int32Add(index, __ Int32Constant(1)));
 
       // TODO(gsathya): Should this be a weak reference check too?
       __ Branch(__ TaggedEqual(maybe_handler, handler), &done, &continue_loop);
 
       __ Bind(&continue_loop);
-      index = __ IntAdd(index, __ IntPtrConstant(2));
+      index = __ Int32Add(index, __ Int32Constant(kEntrySize));
       __ Goto(&loop, index);
     }
   }

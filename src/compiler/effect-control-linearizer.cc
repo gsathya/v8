@@ -1874,7 +1874,7 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
     Node* feedback_slot_handler = __ LoadField(
         AccessBuilder::ForFeedbackVectorSlot(feedback.index() + 1), vector);
     mono_check = __ TaggedEqual(handler, feedback_slot_handler);
-    __ DeoptimizeIfNot(DeoptimizeReason::kWrongName, feedback, mono_check,
+    __ DeoptimizeIfNot(DeoptimizeReason::kWrongMap, FeedbackSource(), mono_check,
                        frame_state, IsSafetyCheck::kCriticalSafetyCheck);
 
     __ Goto(&done);
@@ -1885,14 +1885,15 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
 
   __ Bind(&maybe_poly);
   {
-    __ DeoptimizeIfNot(DeoptimizeReason::kWrongName, feedback,
-                       BuildIsStrong(feedback_slot), frame_state,
+    Node* poly_check = BuildIsStrong(feedback_slot);
+    __ DeoptimizeIfNot(DeoptimizeReason::kWrongICState, FeedbackSource(),
+                       poly_check, frame_state,
                        IsSafetyCheck::kCriticalSafetyCheck);
     Node* feedback_slot_map =
         __ LoadField(AccessBuilder::ForMap(), feedback_slot);
     Node* is_weak_fixed_array_check =
         __ TaggedEqual(feedback_slot_map, __ WeakFixedArrayMapConstant());
-    __ DeoptimizeIfNot(DeoptimizeReason::kWrongName, feedback,
+    __ DeoptimizeIfNot(DeoptimizeReason::kWrongICState, FeedbackSource(),
                        is_weak_fixed_array_check, frame_state,
                        IsSafetyCheck::kCriticalSafetyCheck);
 
@@ -1906,7 +1907,7 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
     {
       Node* index = loop.PhiAt(0);
       Node* check = __ Int32LessThan(index, length);
-      __ DeoptimizeIfNot(DeoptimizeReason::kWrongName, feedback, check,
+      __ DeoptimizeIfNot(DeoptimizeReason::kWrongMap, FeedbackSource(), check,
                          frame_state, IsSafetyCheck::kCriticalSafetyCheck);
 
       Node* maybe_map = __ LoadElement(

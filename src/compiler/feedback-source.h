@@ -13,6 +13,7 @@ namespace internal {
 namespace compiler {
 
 struct FeedbackSource {
+  // TODO(gsathya): Set this using the FeedbackSource constructor
   enum ICState { kMonomorphic, kPolymorphic };
 
   FeedbackSource() { DCHECK(!IsValid()); }

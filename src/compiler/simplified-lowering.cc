@@ -3608,7 +3608,8 @@ class RepresentationSelector {
       }
       case IrOpcode::kDynamicCheckMaps: {
         // TODO(gsathya): What is this doing?
-        DynamicCheckMapsParameters const& p = DynamicCheckMapsParametersOf(node->op());
+        DynamicCheckMapsParameters const& p =
+            DynamicCheckMapsParametersOf(node->op());
         return VisitUnop<T>(
             node, UseInfo::CheckedHeapObjectAsTaggedPointer(p.feedback()),
             MachineRepresentation::kNone);

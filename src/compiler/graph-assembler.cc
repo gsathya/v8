@@ -706,8 +706,8 @@ Node* GraphAssembler::BitcastTaggedToWord(Node* value) {
 }
 
 Node* GraphAssembler::BitcastTaggedToWordForTagAndSmiBits(Node* value) {
-  return AddNode(
-      graph()->NewNode(machine()->BitcastTaggedToWordForTagAndSmiBits(), value));
+  return AddNode(graph()->NewNode(
+      machine()->BitcastTaggedToWordForTagAndSmiBits(), value));
 }
 
 Node* GraphAssembler::BitcastMaybeObjectToWord(Node* value) {

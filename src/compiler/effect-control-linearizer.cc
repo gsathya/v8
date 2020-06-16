@@ -1874,8 +1874,9 @@ void EffectControlLinearizer::LowerDynamicCheckMaps(Node* node,
     Node* feedback_slot_handler = __ LoadField(
         AccessBuilder::ForFeedbackVectorSlot(feedback.index() + 1), vector);
     mono_check = __ TaggedEqual(handler, feedback_slot_handler);
-    __ DeoptimizeIfNot(DeoptimizeReason::kWrongMap, FeedbackSource(), mono_check,
-                       frame_state, IsSafetyCheck::kCriticalSafetyCheck);
+    __ DeoptimizeIfNot(DeoptimizeReason::kWrongMap, FeedbackSource(),
+                       mono_check, frame_state,
+                       IsSafetyCheck::kCriticalSafetyCheck);
 
     __ Goto(&done);
   } else {
@@ -6163,7 +6164,7 @@ Node* EffectControlLinearizer::BuildIsStrong(Node* value) {
       __ Word32And(
           TruncateWordToInt32(__ BitcastTaggedToWordForTagAndSmiBits(value)),
           __ Int32Constant(kHeapObjectTagMask)),
-      __ Int32Constant(kWeakHeapObjectTag));
+      __ Int32Constant(kHeapObjectTag));
 }
 
 Node* EffectControlLinearizer::BuildIsWeakReferenceTo(Node* maybe_object,
